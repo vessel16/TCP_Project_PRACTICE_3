@@ -2,6 +2,8 @@ import socket
 import json
 import threading
 
+import time
+
 
 HOST = "127.0.0.1"
 TCP_PORT = 5000
@@ -39,6 +41,7 @@ def send_to_client(target, message):
             message.encode(),
             client["address"]
         )
+
 
 
 def process_message(sender, message):
@@ -98,6 +101,9 @@ def process_message(sender, message):
     else:
         stats["intra_subnet"] += 1
 
+
+    if priority == "NORMAL":
+        time.sleep(1)
 
     result = f"[{priority}] {sender} → {target}: {text}"
 
