@@ -50,6 +50,9 @@ def process_message(sender, message):
     sender_info = clients[sender]
     target_info = clients[target]
 
+    if sender_info["priority"] == "HIGH":
+        priority = "HIGH"
+
     print()
     print("[ROUTER] ПОЛУЧЕНО СООБЩЕНИЕ")
     print("Отправитель:", sender)
