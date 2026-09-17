@@ -14,6 +14,15 @@ with open("clients.json", "r", encoding="utf-8") as file:
 
 connected_clients = {}
 
+stats = {
+    "tcp": 0,
+    "udp": 0,
+    "high": 0,
+    "normal": 0,
+    "intra_subnet": 0,
+    "inter_subnet": 0,
+}
+
 
 def send_to_client(target, message):
     if target not in connected_clients:
@@ -72,6 +81,23 @@ def process_message(sender, message):
 
     if sender_info["protocol"] != target_info["protocol"]:
         print("[ROUTER] Выполняется преобразование протокола.")
+
+
+    if sender_info["protocol"] == "TCP":
+        stats["tcp"] += 1
+    else:
+        stats["udp"] += 1
+
+    if priority == "HIGH":
+        stats["high"] += 1
+    else:
+        stats["normal"] += 1
+
+    if sender_info["subnet"] != target_info["subnet"]:
+        stats["inter_subnet"] += 1
+    else:
+        stats["intra_subnet"] += 1
+
 
     result = f"[{priority}] {sender} → {target}: {text}"
 
@@ -202,8 +228,31 @@ def udp_server():
                 process_message(sender, message)
 
 
+def console_commands():
+    while True:
+        command = input()
+        if command == "/stats":
+            print()
+            print("========== СТАТИСТИКА ==========")
+            print(f"TCP: {stats['tcp']}")
+            print(f"UDP: {stats['udp']}")
+            print(f"HIGH: {stats['high']}")
+            print(f"NORMAL: {stats['normal']}")
+            print(f"Внутри подсети: {stats['intra_subnet']}")
+            print(f"Межсетевых: {stats['inter_subnet']}")
+        elif command == "/list":
+            print()
+            print("Подключённые клиенты:")
+            for name, info in connected_clients.items():
+                print(f"  {name} {info['protocol']}")
+        elif command == "/help":
+            print("Команды: /list, /stats, /help")
+
 tcp_thread = threading.Thread(target=tcp_server)
 udp_thread = threading.Thread(target=udp_server)
+
+console_thread = threading.Thread(target=console_commands, daemon=True)
+console_thread.start()
 
 tcp_thread.start()
 udp_thread.start()
