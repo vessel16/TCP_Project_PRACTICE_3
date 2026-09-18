@@ -3,42 +3,56 @@
         "ip": "192.168.1.10",
         "subnet": "192.168.1.0/24",
         "protocol": "TCP",
-        "priority": "NORMAL"
+        "priority": 4,
+        "type": "user"
     },
     "Client2": {
         "ip": "192.168.1.11",
         "subnet": "192.168.1.0/24",
         "protocol": "TCP",
-        "priority": "NORMAL"
+        "priority": 4,
+        "type": "user"
     },
     "Client3": {
         "ip": "192.168.1.12",
         "subnet": "192.168.1.0/24",
         "protocol": "TCP",
-        "priority": "HIGH"
+        "priority": 1,
+        "type": "user"
     },
     "Client4": {
         "ip": "192.168.2.10",
         "subnet": "192.168.2.0/24",
         "protocol": "UDP",
-        "priority": "NORMAL"
+        "priority": 4,
+        "type": "user"
     },
     "Client5": {
         "ip": "192.168.2.11",
         "subnet": "192.168.2.0/24",
         "protocol": "UDP",
-        "priority": "HIGH"
+        "priority": 2,
+        "type": "user"
     },
     "Client6": {
         "ip": "192.168.2.12",
         "subnet": "192.168.2.0/24",
         "protocol": "UDP",
-        "priority": "NORMAL"
+        "priority": 4,
+        "type": "user"
     },
     "Client7": {
         "ip": "192.168.3.10",
         "subnet": "192.168.3.0/24",
         "protocol": "TCP",
-        "priority": "HIGH"
+        "priority": 1,
+        "type": "user"
+    },
+    "Bot1": {
+        "ip": "192.168.3.20",
+        "subnet": "192.168.3.0/24",
+        "protocol": "TCP",
+        "priority": 3,
+        "type": "bot"
     }
 }
