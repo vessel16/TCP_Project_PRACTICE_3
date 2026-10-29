@@ -3,7 +3,7 @@ import os
 
 HOST = "127.0.0.1"
 PORT = 5000
-NAME = "Client1"  # Меняйте для каждого клиента
+NAME = "Client7"  # Меняйте для каждого клиента
 
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST, PORT))
