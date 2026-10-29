@@ -1,0 +1,14 @@
+{
+    "routers": {
+        "Router1": {"networks": ["192.168.1.0/24"]},
+        "Router2": {"networks": ["192.168.2.0/24"]},
+        "Router3": {"networks": ["192.168.3.0/24"]},
+        "WirelessRouter": {"networks": ["192.168.4.0/24"]}
+    },
+    "links": [
+        {"from": "Router1", "to": "Router2", "cost": 2, "type": "WIRED"},
+        {"from": "Router1", "to": "Router3", "cost": 5, "type": "WIRED"},
+        {"from": "Router2", "to": "Router3", "cost": 3, "type": "WIRED"},
+        {"from": "Router3", "to": "WirelessRouter", "cost": 2, "type": "WIRELESS"}
+    ]
+}
