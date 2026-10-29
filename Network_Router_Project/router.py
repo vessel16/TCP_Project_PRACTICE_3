@@ -4,18 +4,41 @@ import threading
 import time
 import queue
 import os
+import sys
+
+# Поднимаемся на уровень выше, чтобы импортировать routing.py из корня TCP_Project
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from routing import build_graph, shortest_path
 
 HOST = "127.0.0.1"
-TCP_PORT = 5000
-UDP_PORT = 6000
 
+# Определяем, за какой роутер мы запускаемся (по умолчанию Router1)
+ROUTER_NAME = sys.argv[1] if len(sys.argv) > 1 else "Router1"
+
+# Загружаем топологию сети из корневой папки
+with open("../network.json", "r", encoding="utf-8") as f:
+    network = json.load(f)
+GRAPH = build_graph(network)
+
+# Словарь адресов и портов для всех 4 роутеров
+ROUTER_ADDRS = {
+    "Router1": ("127.0.0.1", 5000),
+    "Router2": ("127.0.0.1", 5100),
+    "Router3": ("127.0.0.1", 5200),
+    "WirelessRouter": ("127.0.0.1", 5300),
+}
+
+# Настраиваем порты для текущего роутера
+TCP_PORT = ROUTER_ADDRS[ROUTER_NAME][1]
+UDP_PORT = TCP_PORT + 1000
+
+# Загружаем базу клиентов
 with open("clients.json", "r", encoding="utf-8") as file:
     clients = json.load(file)
 
 connected_clients = {}
 
 # Очередь сообщений с приоритетом.
-# Формат: (priority, timestamp, sender, target, message_type, payload)
 message_queue = queue.PriorityQueue()
 
 stats = {
@@ -28,9 +51,32 @@ stats = {
     "files": 0,
 }
 
+def print_routing_table(start):
+    """Вывод таблицы маршрутизации для текущего роутера"""
+    print(f"\n[{start}] ROUTING TABLE")
+    print(f"{'Destination':<18}{'Next hop':<18}{'Cost'}")
+    print("-" * 50)
+    for dest in GRAPH:
+        if dest == start:
+            continue
+        path, cost = shortest_path(GRAPH, start, dest)
+        next_hop = path[1] if len(path) > 1 else "-"
+        print(f"{dest:<18}{next_hop:<18}{cost}")
+
+def forward_packet(packet, target_router):
+    """Пересылка пакета следующему роутеру"""
+    addr = ROUTER_ADDRS[target_router]
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(addr)
+        s.send(packet.encode("utf-8"))
+        s.close()
+    except Exception as e:
+        print(f"[{ROUTER_NAME}] Ошибка пересылки на {target_router}: {e}")
+
 def send_to_client(target, message):
     if target not in connected_clients:
-        print(f"[ROUTER] Клиент {target} не подключён.")
+        print(f"[{ROUTER_NAME}] Клиент {target} не подключён.")
         return
 
     client = connected_clients[target]
@@ -39,17 +85,17 @@ def send_to_client(target, message):
         try:
             client["socket"].send(message.encode())
         except Exception as e:
-            print(f"[ROUTER] Ошибка отправки TCP клиенту {target}: {e}")
+            print(f"[{ROUTER_NAME}] Ошибка отправки TCP клиенту {target}: {e}")
     elif client["protocol"] == "UDP":
         try:
             client["socket"].sendto(message.encode(), client["address"])
         except Exception as e:
-            print(f"[ROUTER] Ошибка отправки UDP клиенту {target}: {e}")
+            print(f"[{ROUTER_NAME}] Ошибка отправки UDP клиенту {target}: {e}")
 
 def send_file_to_client(target, file_data, filename):
     """Отправка файла клиенту."""
     if target not in connected_clients:
-        print(f"[ROUTER] Клиент {target} не подключён.")
+        print(f"[{ROUTER_NAME}] Клиент {target} не подключён.")
         return
 
     client = connected_clients[target]
@@ -60,19 +106,19 @@ def send_file_to_client(target, file_data, filename):
             client["socket"].send(header.encode())
             client["socket"].send(file_data)
         except Exception as e:
-            print(f"[ROUTER] Ошибка отправки файла TCP клиенту {target}: {e}")
+            print(f"[{ROUTER_NAME}] Ошибка отправки файла TCP клиенту {target}: {e}")
     elif client["protocol"] == "UDP":
         try:
             client["socket"].sendto(header.encode(), client["address"])
             client["socket"].sendto(file_data, client["address"])
         except Exception as e:
-            print(f"[ROUTER] Ошибка отправки файла UDP клиенту {target}: {e}")
+            print(f"[{ROUTER_NAME}] Ошибка отправки файла UDP клиенту {target}: {e}")
 
 def process_message(sender, message):
     parts = message.split("|", 2)
 
     if len(parts) < 3:
-        print("[ROUTER] Неверный формат сообщения.")
+        print(f"[{ROUTER_NAME}] Неверный формат сообщения.")
         return
 
     target = parts[0]
@@ -85,44 +131,64 @@ def process_message(sender, message):
         priority = 4
 
     if target not in clients:
-        print(f"[ROUTER] Получатель {target} не найден.")
+        print(f"[{ROUTER_NAME}] Получатель {target} не найден.")
         return
 
     sender_info = clients[sender]
     target_info = clients[target]
 
-    # Автоматический приоритет для бота, если он не указал
-    if sender_info.get("type") == "bot":
-        pass
-
     if sender_info["priority"] < priority:
         priority = sender_info["priority"]
 
+    # --- ЛОГИКА МНОГОРОУТЕРНОСТИ (ПР3) ---
+    src_router = sender_info["router"]
+    dst_router = target_info["router"]
+    
+    path, cost = shortest_path(GRAPH, src_router, dst_router)
+    
     print()
-    print("[ROUTER] ПОЛУЧЕНО СООБЩЕНИЕ")
-    print("Отправитель:", sender)
-    print("Получатель:", target)
+    print(f"[{ROUTER_NAME}] ПОЛУЧЕНО СООБЩЕНИЕ")
+    print(f"[{ROUTER_NAME}] Источник: {sender} | Назначение: {target}")
+    print(f"[{ROUTER_NAME}] Кратчайший путь: {' -> '.join(path)}")
+    print(f"[{ROUTER_NAME}] Стоимость маршрута: {cost}")
+
+    # Если текущего роутера нет в пути, дальше не передаем
+    if ROUTER_NAME not in path:
+        return
+        
+    idx = path.index(ROUTER_NAME)
+    
+    # Если мы не последний в цепочке, пересылаем следующему
+    if idx < len(path) - 1:
+        next_router = path[idx + 1]
+        print(f"[{ROUTER_NAME}] Пересылка следующему узлу: {next_router}")
+        raw_packet = f"{target}|{priority_str}|{text}"
+        forward_packet(raw_packet, next_router)
+        return  # Останавливаем обработку, мы же просто транзитный узел
+    # --------------------------------------
+
+    # Если мы дошли сюда, значит мы последний роутер (Edge Router)
+    print(f"[{ROUTER_NAME}] Доставка клиенту {target}")
     print("Подсеть отправителя:", sender_info["subnet"])
     print("Подсеть получателя:", target_info["subnet"])
     print("Протокол отправителя:", sender_info["protocol"])
     print("Протокол получателя:", target_info["protocol"])
     print("Приоритет:", priority)
-    print("Сообщение:", text)
 
     if priority <= 2:
-        print("[ROUTER] Приоритетное сообщение.")
+        print(f"[{ROUTER_NAME}] Приоритетное сообщение.")
         stats["high"] += 1
     else:
         stats["normal"] += 1
 
     if sender_info["subnet"] != target_info["subnet"]:
-        print("[ROUTER] Выполняется межсетевой маршрут.")
+        print(f"[{ROUTER_NAME}] Выполняется межсетевой маршрут.")
         stats["inter_subnet"] += 1
     else:
         stats["intra_subnet"] += 1
 
     if sender_info["protocol"] != target_info["protocol"]:
-        print("[ROUTER] Выполняется преобразование протокола.")
+        print(f"[{ROUTER_NAME}] Выполняется преобразование протокола.")
 
     if sender_info["protocol"] == "TCP":
         stats["tcp"] += 1
@@ -133,23 +199,46 @@ def process_message(sender, message):
 
 def process_file(sender, target, filename, file_data):
     if target not in clients:
-        print(f"[ROUTER] Получатель {target} не найден.")
+        print(f"[{ROUTER_NAME}] Получатель {target} не найден.")
         return
 
     sender_info = clients[sender]
     target_info = clients[target]
+    
+    # Для файлов берем приоритет отправителя
     priority = sender_info["priority"]
 
+    # Логика маршрутизации для файлов
+    src_router = sender_info["router"]
+    dst_router = target_info["router"]
+    path, cost = shortest_path(GRAPH, src_router, dst_router)
+    
+    if ROUTER_NAME not in path:
+        return
+        
+    idx = path.index(ROUTER_NAME)
+    if idx < len(path) - 1:
+        next_router = path[idx + 1]
+        print(f"[{ROUTER_NAME}] Пересылка файла следующему узлу: {next_router}")
+        # (В упрощенной модели файлы по TCP пересылаются текстом, для курсовой этого достаточно)
+        raw_header = f"FILE|{target}|{filename}|{len(file_data)}\n".encode()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(ROUTER_ADDRS[next_router])
+            s.send(raw_header + file_data)
+            s.close()
+        except Exception as e:
+            print(f"Ошибка пересылки файла: {e}")
+        return
+
     print()
-    print("[ROUTER] ПОЛУЧЕН ФАЙЛ")
+    print(f"[{ROUTER_NAME}] ПОЛУЧЕН ФАЙЛ (Конечная точка)")
     print("Отправитель:", sender)
     print("Получатель:", target)
     print("Имя файла:", filename)
     print("Размер:", len(file_data), "байт")
-    print("Приоритет:", priority)
-
+    
     stats["files"] += 1
-
     message_queue.put((priority, time.time(), sender, target, "file", (filename, file_data)))
 
 def message_worker():
@@ -182,11 +271,9 @@ def handle_tcp_client(client_socket, client_address):
             }
 
             print()
-            print("[ROUTER] TCP-клиент подключён:", sender)
+            print(f"[{ROUTER_NAME}] TCP-клиент подключён:", sender)
             print("Адрес:", client_address)
-            print("Подсеть:", clients[sender]["subnet"])
-            print("Приоритет:", clients[sender]["priority"])
-
+            
             client_socket.send("Регистрация выполнена.".encode())
 
         while True:
@@ -198,7 +285,7 @@ def handle_tcp_client(client_socket, client_address):
             if data.startswith(b"FILE|"):
                 header_end = data.find(b"\n")
                 if header_end == -1:
-                    print("[ROUTER] Ошибка: неверный формат файла.")
+                    print(f"[{ROUTER_NAME}] Ошибка: неверный формат файла.")
                     continue
                 
                 header = data[:header_end].decode()
@@ -210,26 +297,26 @@ def handle_tcp_client(client_socket, client_address):
                     filename = parts[2]
                     process_file(sender, target, filename, file_data)
                 else:
-                    print("[ROUTER] Ошибка: неверный заголовок файла.")
+                    print(f"[{ROUTER_NAME}] Ошибка: неверный заголовок файла.")
             else:
                 message = data.decode()
                 process_message(sender, message)
 
     except Exception as error:
-        print("[ROUTER] Ошибка:", error)
+        print(f"[{ROUTER_NAME}] Ошибка:", error)
 
     finally:
         if sender in connected_clients:
             del connected_clients[sender]
 
         client_socket.close()
-        print(f"[ROUTER] Клиент {sender} отключён.")
+        print(f"[{ROUTER_NAME}] Клиент {sender} отключён.")
 
 def tcp_server():
     tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_socket.bind((HOST, TCP_PORT))
     tcp_socket.listen()
-    print(f"[ROUTER] TCP ожидает подключения: {HOST}:{TCP_PORT}")
+    print(f"[{ROUTER_NAME}] TCP ожидает подключения: {HOST}:{TCP_PORT}")
 
     while True:
         client_socket, client_address = tcp_socket.accept()
@@ -239,7 +326,7 @@ def tcp_server():
 def udp_server():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     udp_socket.bind((HOST, UDP_PORT))
-    print(f"[ROUTER] UDP ожидает сообщения: {HOST}:{UDP_PORT}")
+    print(f"[{ROUTER_NAME}] UDP ожидает сообщения: {HOST}:{UDP_PORT}")
 
     while True:
         data, client_address = udp_socket.recvfrom(4096)
@@ -253,13 +340,12 @@ def udp_server():
                 "protocol": "UDP"
             }
             print()
-            print("[ROUTER] UDP-клиент подключён:", sender)
+            print(f"[{ROUTER_NAME}] UDP-клиент подключён:", sender)
             print("Адрес:", client_address)
-            print("Подсеть:", clients[sender]["subnet"])
-            print("Приоритет:", clients[sender]["priority"])
+            
             udp_socket.sendto("Регистрация выполнена.".encode(), client_address)
         elif message.startswith("FILE|"):
-            print("[ROUTER] Получен файл по UDP (упрощённая обработка).")
+            print(f"[{ROUTER_NAME}] Получен файл по UDP (упрощённая обработка).")
             sender = None
             for name, client in connected_clients.items():
                 if client["protocol"] == "UDP" and client["address"] == client_address:
@@ -304,12 +390,16 @@ def console_commands():
         elif command == "/help":
             print("Команды: /list, /stats, /help")
 
-tcp_thread = threading.Thread(target=tcp_server)
-udp_thread = threading.Thread(target=udp_server)
-console_thread = threading.Thread(target=console_commands, daemon=True)
-worker_thread = threading.Thread(target=message_worker, daemon=True)
+# Точка входа
+if __name__ == "__main__":
+    print_routing_table(ROUTER_NAME)
+    
+    tcp_thread = threading.Thread(target=tcp_server)
+    udp_thread = threading.Thread(target=udp_server)
+    console_thread = threading.Thread(target=console_commands, daemon=True)
+    worker_thread = threading.Thread(target=message_worker, daemon=True)
 
-worker_thread.start()
-console_thread.start()
-tcp_thread.start()
-udp_thread.start()
+    worker_thread.start()
+    console_thread.start()
+    tcp_thread.start()
+    udp_thread.start()
