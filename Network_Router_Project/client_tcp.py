@@ -2,6 +2,8 @@ import socket
 import threading
 import sys
 import os
+
+# Добавляем путь к корневой папке, чтобы импортировать crypto.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from crypto import xor_encrypt, xor_decrypt
 
@@ -10,9 +12,10 @@ NAME = sys.argv[1] if len(sys.argv) > 1 else "Client1"
 MY_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 7001
 
 HOST = "127.0.0.1"
-PORT = 5000 # Порт Router1 (по умолчанию для TCP-клиентов)
+PORT = 5000 # Порт Router1
 
 def receiver(key):
+    """Фоновый поток для приема сообщений и их расшифровки"""
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind((HOST, MY_PORT))
     s.listen(5)
@@ -20,7 +23,8 @@ def receiver(key):
         conn, _ = s.accept()
         raw = conn.recv(4096).decode()
         conn.close()
-        # Ожидаем формат: SRP|DATA|Source|Target|Protocol|Priority|1|HEX
+        
+        # Ожидаем формат от роутера: SRP|DATA|Source|Target|Protocol|Priority|1|HEX
         parts = raw.split("|")
         if len(parts) >= 8 and parts[0] == "SRP":
             try:
@@ -28,6 +32,9 @@ def receiver(key):
                 print(f"\n[{NAME}] Получено и расшифровано: {text}")
             except Exception as e:
                 print(f"\n[{NAME}] Ошибка расшифровки (неверный ключ?): {e}")
+        else:
+            # Если пришло без шифрования (например, от старого клиента)
+            print(f"\n[{NAME}] Получено сырое сообщение: {raw}")
 
 if __name__ == "__main__":
     key = input("Введите ключ шифрования (например, 12345): ")

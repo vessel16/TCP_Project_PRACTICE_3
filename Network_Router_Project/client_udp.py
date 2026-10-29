@@ -2,13 +2,15 @@ import socket
 import threading
 import sys
 import os
+
+# Добавляем путь к корневой папке, чтобы импортировать crypto.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from crypto import xor_encrypt, xor_decrypt
 
-NAME = sys.argv[1] if len(sys.argv) > 1 else "Client4"
-MY_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 7004
+NAME = sys.argv[1] if len(sys.argv) > 1 else "Client8"
+MY_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 7008
 HOST = "127.0.0.1"
-PORT = 6000
+PORT = 6000 # Порт Router1 для UDP
 
 def receiver(key):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -23,6 +25,8 @@ def receiver(key):
                 print(f"\n[{NAME}] Получено и расшифровано: {text}")
             except Exception as e:
                 print(f"\n[{NAME}] Ошибка расшифровки: {e}")
+        else:
+            print(f"\n[{NAME}] Получено сырое сообщение: {raw}")
 
 if __name__ == "__main__":
     key = input("Введите ключ шифрования (например, 12345): ")
